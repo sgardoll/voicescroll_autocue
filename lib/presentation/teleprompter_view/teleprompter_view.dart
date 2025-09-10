@@ -59,6 +59,15 @@ class _TeleprompterViewState extends State<TeleprompterView>
   int _speechRestartAttempts = 0;
   static const int _maxRestartAttempts = 3;
 
+  // Performance Controls
+  double _speechSensitivity = 0.5; // 0.0 to 1.0
+  bool _performanceMode = false; // true for performance, false for accuracy
+  bool _enableFuzzyMatching = true;
+  int _searchWindowSize = 15;
+
+  // App lifecycle observer
+  late _AppLifecycleObserver _appLifecycleObserver;
+
   // Mock Script Data
   final String _scriptText =
       """Welcome to VoiceScroll Autocue, the professional teleprompter application designed for seamless content delivery. This innovative tool combines advanced voice recognition technology with intuitive scrolling controls to provide hands-free operation for presenters, content creators, and public speakers.
@@ -79,6 +88,28 @@ Experience the future of teleprompter technology with VoiceScroll Autocue - wher
     _startAutoHideTimer();
     _initializeSpeechRecognition();
     _initializeScriptWords();
+    _setupAppLifecycleListener();
+  }
+
+  void _setupAppLifecycleListener() {
+    // Listen for app lifecycle changes to refresh permissions when returning from settings
+    _appLifecycleObserver = _AppLifecycleObserver(
+      onResume: () async {
+        debugPrint('App resumed, checking microphone permission status...');
+        final status = await Permission.microphone.status;
+        debugPrint('Microphone permission status on resume: $status');
+
+        // If permission is now granted and we were previously denied, clear the error
+        if (status.isGranted && _permissionDenied) {
+          setState(() {
+            _permissionDenied = false;
+            _speechError = null;
+          });
+          debugPrint('Microphone permission granted, clearing error state');
+        }
+      },
+    );
+    WidgetsBinding.instance.addObserver(_appLifecycleObserver);
   }
 
   void _initializeControllers() {
@@ -146,10 +177,10 @@ Experience the future of teleprompter technology with VoiceScroll Autocue - wher
         .split(RegExp(r'\s+'))
         .where((word) => word.isNotEmpty)
         .toList();
-    
+
     _buildWordPositionsCache();
   }
-  
+
   void _buildWordPositionsCache() {
     _wordPositionsCache.clear();
     for (int i = 0; i < _scriptWords.length; i++) {
@@ -159,9 +190,10 @@ Experience the future of teleprompter technology with VoiceScroll Autocue - wher
       }
       _wordPositionsCache[word]!.add(i);
     }
-    debugPrint('Built word positions cache for ${_wordPositionsCache.length} unique words');
+    debugPrint(
+        'Built word positions cache for ${_wordPositionsCache.length} unique words');
   }
-  
+
   void _startSpeechTimeoutMonitor() {
     _speechTimeoutTimer?.cancel();
     _speechTimeoutTimer = Timer.periodic(const Duration(seconds: 2), (timer) {
@@ -169,13 +201,14 @@ Experience the future of teleprompter technology with VoiceScroll Autocue - wher
         timer.cancel();
         return;
       }
-      
+
       final now = DateTime.now();
-      if (_lastSpeechTime != null && 
+      if (_lastSpeechTime != null &&
           now.difference(_lastSpeechTime!).inSeconds > 10) {
         // No speech activity for 10 seconds, check if still listening
         debugPrint('No speech activity detected, checking listening status');
-        if (!_speechToText.isListening && _speechRestartAttempts < _maxRestartAttempts) {
+        if (!_speechToText.isListening &&
+            _speechRestartAttempts < _maxRestartAttempts) {
           debugPrint('Attempting to restart speech recognition due to timeout');
           _speechRestartAttempts++;
           _restartSpeechRecognition();
@@ -183,16 +216,17 @@ Experience the future of teleprompter technology with VoiceScroll Autocue - wher
       }
     });
   }
-  
+
   void _resetSpeechTimeoutTimer() {
     _startSpeechTimeoutMonitor();
   }
-  
+
   Future<void> _restartSpeechRecognition() async {
     if (!_isPlaying || !_voiceRecognitionActive) return;
-    
-    debugPrint('Restarting speech recognition (attempt $_speechRestartAttempts/$_maxRestartAttempts)');
-    
+
+    debugPrint(
+        'Restarting speech recognition (attempt $_speechRestartAttempts/$_maxRestartAttempts)');
+
     try {
       await _speechToText.stop();
       await Future.delayed(const Duration(milliseconds: 200)); // Short delay
@@ -222,10 +256,7 @@ Experience the future of teleprompter technology with VoiceScroll Autocue - wher
         },
         onError: (errorNotification) {
           debugPrint('Speech recognition error: ${errorNotification.errorMsg}');
-          setState(() {
-            _speechError = errorNotification.errorMsg;
-            _speechEnabled = false;
-          });
+          _handleSpeechError(errorNotification.errorMsg);
         },
       );
 
@@ -267,7 +298,39 @@ Experience the future of teleprompter technology with VoiceScroll Autocue - wher
     }
 
     try {
-      var permissionStatus = await Permission.microphone.request();
+      // First check current status
+      var permissionStatus = await Permission.microphone.status;
+      debugPrint('Current microphone permission status: $permissionStatus');
+
+      // If permission is permanently denied, try to refresh the status
+      // This handles the case where user manually enabled permission in settings
+      if (permissionStatus.isPermanentlyDenied) {
+        debugPrint(
+            'Permission was permanently denied, checking if user enabled it in settings...');
+
+        // Try to request permission again - this will refresh the status
+        permissionStatus = await Permission.microphone.request();
+        debugPrint('Permission status after refresh: $permissionStatus');
+
+        // If still permanently denied, show settings guidance
+        if (permissionStatus.isPermanentlyDenied) {
+          debugPrint(
+              'Microphone permission still permanently denied: $permissionStatus');
+          setState(() {
+            _permissionDenied = true;
+            _speechError =
+                'Microphone permission is permanently denied. Please enable microphone access in Settings > Privacy & Security > Microphone.';
+          });
+          _overlayFadeController.forward();
+          return;
+        }
+      }
+
+      // If permission is denied but not permanently, request it
+      if (permissionStatus.isDenied) {
+        permissionStatus = await Permission.microphone.request();
+      }
+
       if (permissionStatus.isGranted) {
         debugPrint('Starting speech recognition...');
         setState(() {
@@ -277,18 +340,20 @@ Experience the future of teleprompter technology with VoiceScroll Autocue - wher
         await _speechToText.listen(
           onResult: _onSpeechResult,
           listenFor: const Duration(minutes: 30), // Much longer session
-          pauseFor: const Duration(seconds: 3), // Shorter pause for responsiveness
-          partialResults: true, // Using deprecated parameter until SpeechListenOptions available
+          pauseFor:
+              const Duration(seconds: 3), // Shorter pause for responsiveness
+          partialResults:
+              true, // Using deprecated parameter until SpeechListenOptions available
           localeId: 'en_US',
           onSoundLevelChange: (level) {
             // Optional: Handle sound level changes
           },
         );
-        
+
         setState(() {
           _continuousListening = true;
         });
-        
+
         _startSpeechTimeoutMonitor();
       } else {
         debugPrint('Microphone permission denied: $permissionStatus');
@@ -333,15 +398,16 @@ Experience the future of teleprompter technology with VoiceScroll Autocue - wher
     if (result.finalResult) {
       debugPrint('Processing final result: $_currentRecognizedText');
       _processRecognizedText(_currentRecognizedText);
-      
+
       if (mounted) {
         setState(() {
           _currentRecognizedText = '';
         });
       }
-      
+
       // No automatic restart - let continuous session handle it
-      _speechRestartAttempts = 0; // Reset restart attempts on successful recognition
+      _speechRestartAttempts =
+          0; // Reset restart attempts on successful recognition
     }
   }
 
@@ -385,7 +451,7 @@ Experience the future of teleprompter technology with VoiceScroll Autocue - wher
 
   int _findMatchingWords(List<String> recognizedWords) {
     if (recognizedWords.isEmpty) return _currentWordIndex;
-    
+
     int bestMatch = _currentWordIndex;
     debugPrint('Looking for matches in: $recognizedWords');
     debugPrint('Current word index: $_currentWordIndex');
@@ -394,28 +460,38 @@ Experience the future of teleprompter technology with VoiceScroll Autocue - wher
 
     // Define search window to limit scope and improve performance
     final searchStart = _currentWordIndex;
-    final searchEnd = math.min(_scriptWords.length, _currentWordIndex + 15);
-    
+    final searchEnd =
+        math.min(_scriptWords.length, _currentWordIndex + _searchWindowSize);
+
     // Find the furthest matching word within the search window
     int furthestMatch = _currentWordIndex;
-    
+
     for (String recognizedWord in recognizedWords) {
       // First try exact match using cache
       final positions = _wordPositionsCache[recognizedWord];
       if (positions != null) {
         for (int position in positions) {
-          if (position >= searchStart && position < searchEnd && position > furthestMatch) {
-            debugPrint('Found exact match: "$recognizedWord" at index $position');
+          if (position >= searchStart &&
+              position < searchEnd &&
+              position > furthestMatch) {
+            debugPrint(
+                'Found exact match: "$recognizedWord" at index $position');
             furthestMatch = position;
           }
         }
       }
-      
-      // If no exact match, try fuzzy matching only within a smaller window
-      if (furthestMatch == _currentWordIndex) {
-        for (int i = searchStart; i < math.min(searchEnd, searchStart + 8); i++) {
+
+      // If no exact match, try fuzzy matching only within a smaller window (if enabled)
+      if (furthestMatch == _currentWordIndex &&
+          _enableFuzzyMatching &&
+          !_performanceMode) {
+        final fuzzyWindowSize = _performanceMode ? 5 : 8;
+        for (int i = searchStart;
+            i < math.min(searchEnd, searchStart + fuzzyWindowSize);
+            i++) {
           if (_wordsMatchFuzzy(_scriptWords[i], recognizedWord)) {
-            debugPrint('Found fuzzy match: "${_scriptWords[i]}" matches "$recognizedWord" at index $i');
+            debugPrint(
+                'Found fuzzy match: "${_scriptWords[i]}" matches "$recognizedWord" at index $i');
             if (i > furthestMatch) {
               furthestMatch = i;
             }
@@ -424,7 +500,7 @@ Experience the future of teleprompter technology with VoiceScroll Autocue - wher
         }
       }
     }
-    
+
     if (furthestMatch > _currentWordIndex) {
       bestMatch = furthestMatch + 1; // Move to next word
     }
@@ -439,7 +515,7 @@ Experience the future of teleprompter technology with VoiceScroll Autocue - wher
 
     // Ignore very short words to avoid false positives
     if (recognizedWord.length < 3) return false;
-    
+
     // Contains match (either direction)
     if (scriptWord.contains(recognizedWord) ||
         recognizedWord.contains(scriptWord)) {
@@ -450,26 +526,25 @@ Experience the future of teleprompter technology with VoiceScroll Autocue - wher
     if (recognizedWord.length > 4 && scriptWord.length > 4) {
       return _simpleDistance(scriptWord, recognizedWord) <= 2;
     }
-    
+
     return false;
   }
-  
+
   int _simpleDistance(String s1, String s2) {
     // Simple character difference count (much faster than Levenshtein)
     if ((s1.length - s2.length).abs() > 2) return 999; // Too different
-    
+
     int differences = 0;
     int minLength = math.min(s1.length, s2.length);
-    
+
     for (int i = 0; i < minLength; i++) {
       if (s1[i] != s2[i]) differences++;
       if (differences > 2) return differences; // Early exit
     }
-    
+
     differences += (s1.length - s2.length).abs();
     return differences;
   }
-
 
   void _showControls() {
     setState(() {
@@ -549,18 +624,66 @@ Experience the future of teleprompter technology with VoiceScroll Autocue - wher
     Navigator.of(context).pop();
   }
 
+  // Performance control methods
+  void _togglePerformanceMode() {
+    setState(() {
+      _performanceMode = !_performanceMode;
+      // Adjust search window based on performance mode
+      _searchWindowSize = _performanceMode ? 8 : 15;
+      _enableFuzzyMatching =
+          !_performanceMode; // Disable fuzzy matching in performance mode
+    });
+    debugPrint('Performance mode: ${_performanceMode ? "ON" : "OFF"}');
+  }
+
+  void _adjustSpeechSensitivity(double sensitivity) {
+    setState(() {
+      _speechSensitivity = sensitivity.clamp(0.0, 1.0);
+    });
+    debugPrint('Speech sensitivity adjusted to: $_speechSensitivity');
+  }
+
+  // Enhanced error recovery
+  Future<void> _handleSpeechError(String error) async {
+    debugPrint('Handling speech error: $error');
+
+    // Stop current speech recognition
+    await _stopListening();
+
+    // Reset speech state
+    _speechRestartAttempts = 0;
+    _continuousListening = false;
+
+    setState(() {
+      _speechError = error;
+      _voiceRecognitionActive = false;
+      _isListening = false;
+    });
+
+    // Auto-recovery for common errors
+    if (error.contains('network') || error.contains('timeout')) {
+      // Network/timeout errors - try again after delay
+      Future.delayed(const Duration(seconds: 2), () {
+        if (mounted && _isPlaying) {
+          debugPrint('Auto-recovering from network/timeout error');
+          _togglePlayPause(); // This will restart voice recognition
+        }
+      });
+    }
+  }
+
   Widget _buildSpeechStatusWidget() {
     return Container(
       padding: EdgeInsets.all(16.w),
       margin: EdgeInsets.symmetric(horizontal: 4.w),
       decoration: BoxDecoration(
         color: _permissionDenied
-            ? Colors.orange.withValues(alpha: 0.9)
-            : Colors.red.withValues(alpha: 0.9),
+            ? Colors.orange.withOpacity(0.9)
+            : Colors.red.withOpacity(0.9),
         borderRadius: BorderRadius.circular(12.0),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.2),
+            color: Colors.black.withOpacity(0.2),
             blurRadius: 8.0,
             offset: Offset(0, 2.h),
           ),
@@ -645,6 +768,7 @@ Experience the future of teleprompter technology with VoiceScroll Autocue - wher
     _speechTimeoutTimer?.cancel();
     _speechToText.stop();
     _exitImmersiveMode();
+    WidgetsBinding.instance.removeObserver(_appLifecycleObserver);
     super.dispose();
   }
 
@@ -770,5 +894,18 @@ Experience the future of teleprompter technology with VoiceScroll Autocue - wher
         ),
       ),
     );
+  }
+}
+
+class _AppLifecycleObserver extends WidgetsBindingObserver {
+  final VoidCallback onResume;
+
+  _AppLifecycleObserver({required this.onResume});
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      onResume();
+    }
   }
 }

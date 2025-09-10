@@ -326,7 +326,6 @@ class _ScriptImportState extends State<ScriptImport> {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
-      isScrollControlled: true,
       builder: (context) => ImportMethodSelector(
         onMethodSelected: _handleMethodSelected,
       ),
