@@ -24,7 +24,7 @@ dependencies:
   fluttertoast: ^8.2.4
   fl_chart: ^0.65.0
   speech_to_text: ^6.6.0
-  wakelock: ^0.4.0
+  wakelock_plus: ^1.1.4
   permission_handler: ^11.1.0
   record: ^6.0.0
   flutter_slidable: ^4.0.1
