@@ -712,7 +712,7 @@ class _SettingsState extends State<Settings> with TickerProviderStateMixin {
             color: AppTheme.textPrimary,
             size: 6.w,
           ),
-          onPressed: () => Navigator.pop(context),
+          onPressed: () => Navigator.pushReplacementNamed(context, '/script-library'),
         ),
         actions: [
           IconButton(

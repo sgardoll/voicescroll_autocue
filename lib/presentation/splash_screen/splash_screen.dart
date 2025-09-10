@@ -252,6 +252,7 @@ class _SplashScreenState extends State<SplashScreen> {
               // Main content
               Column(
                 mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   const Spacer(flex: 2),
 
@@ -261,28 +262,36 @@ class _SplashScreenState extends State<SplashScreen> {
                   SizedBox(height: 4.h),
 
                   // App name
-                  Text(
-                    'VoiceScroll Autocue',
-                    style:
-                        AppTheme.darkTheme.textTheme.headlineMedium?.copyWith(
-                      color: AppTheme.textPrimary,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 6.w,
-                      letterSpacing: 0.5,
+                  Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 4.w),
+                    child: Text(
+                      'VoiceScroll Autocue',
+                      style:
+                          AppTheme.darkTheme.textTheme.headlineMedium?.copyWith(
+                        color: AppTheme.textPrimary,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 6.w,
+                        letterSpacing: 0.5,
+                      ),
+                      textAlign: TextAlign.center,
                     ),
-                    textAlign: TextAlign.center,
                   ),
 
                   SizedBox(height: 1.h),
 
                   // Tagline
-                  Text(
-                    'Professional Teleprompter with Voice Recognition',
-                    style: AppTheme.darkTheme.textTheme.bodyMedium?.copyWith(
-                      color: AppTheme.textSecondary,
-                      fontSize: 3.2.w,
+                  Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 6.w),
+                    child: Text(
+                      'Professional Teleprompter with Voice Recognition',
+                      style: AppTheme.darkTheme.textTheme.bodyMedium?.copyWith(
+                        color: AppTheme.textSecondary,
+                        fontSize: 3.2.w,
+                      ),
+                      textAlign: TextAlign.center,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                     ),
-                    textAlign: TextAlign.center,
                   ),
 
                   const Spacer(flex: 1),
