@@ -606,6 +606,20 @@ Experience the future of teleprompter technology with VoiceScroll Autocue - wher
     _showControls();
   }
 
+  void _increaseFontSize() {
+    setState(() {
+      _fontSize = (_fontSize + 2.0).clamp(16.0, 48.0);
+    });
+    _showControls();
+  }
+
+  void _decreaseFontSize() {
+    setState(() {
+      _fontSize = (_fontSize - 2.0).clamp(16.0, 48.0);
+    });
+    _showControls();
+  }
+
   void _handleTextTap() {
     if (_isPlaying) {
       _togglePlayPause();
@@ -871,8 +885,8 @@ Experience the future of teleprompter technology with VoiceScroll Autocue - wher
                     isPlaying: _isPlaying,
                     scrollSpeed: _scrollSpeed,
                     onPlayPause: _togglePlayPause,
-                    onSpeedDecrease: _decreaseSpeed,
-                    onSpeedIncrease: _increaseSpeed,
+                    onSpeedDecrease: _decreaseFontSize,
+                    onSpeedIncrease: _increaseFontSize,
                     onExit: _exitTeleprompter,
                     isVisible: _controlsVisible,
                   ),

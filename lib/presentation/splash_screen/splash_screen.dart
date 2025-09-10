@@ -181,15 +181,8 @@ class _SplashScreenState extends State<SplashScreen> {
   Future<void> _completeInitialization() async {
     _restoreSystemUI();
 
-    // Check if user has existing scripts
-    final hasExistingScripts = await _checkExistingScripts();
-
-    // Navigate based on user state
-    if (hasExistingScripts) {
-      Navigator.pushReplacementNamed(context, '/script-library');
-    } else {
-      Navigator.pushReplacementNamed(context, '/script-import');
-    }
+    // Navigate directly to settings
+    Navigator.pushReplacementNamed(context, '/settings');
   }
 
   Future<bool> _checkExistingScripts() async {
@@ -204,7 +197,7 @@ class _SplashScreenState extends State<SplashScreen> {
 
   void _navigateToOfflineMode() {
     _restoreSystemUI();
-    Navigator.pushReplacementNamed(context, '/script-library');
+    Navigator.pushReplacementNamed(context, '/settings');
   }
 
   void _handlePermissionDeny() {
