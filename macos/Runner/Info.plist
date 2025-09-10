@@ -28,5 +28,9 @@
 	<string>MainMenu</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Microphone permission is required to record audio and enable voice recognition.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Speech recognition is required to control the teleprompter with voice commands.</string>
 </dict>
 </plist>

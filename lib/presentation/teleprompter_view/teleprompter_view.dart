@@ -25,6 +25,8 @@ class _TeleprompterViewState extends State<TeleprompterView>
   // Controllers and Animation
   late ScrollController _scrollController;
   late AnimationController _fadeController;
+  late AnimationController _controlsFadeController;
+  late AnimationController _overlayFadeController;
   Timer? _autoHideTimer;
   Timer? _scrollTimer;
 
@@ -32,6 +34,8 @@ class _TeleprompterViewState extends State<TeleprompterView>
   final SpeechToText _speechToText = SpeechToText();
   bool _speechEnabled = false;
   String _currentRecognizedText = '';
+  String? _speechError;
+  bool _permissionDenied = false;
 
   // Teleprompter State
   bool _isPlaying = false;
@@ -72,11 +76,28 @@ Experience the future of teleprompter technology with VoiceScroll Autocue - wher
 
   void _initializeControllers() {
     _scrollController = ScrollController();
+
+    // Main fade controller for screen entrance
     _fadeController = AnimationController(
-      duration: const Duration(milliseconds: 300),
+      duration:
+          const Duration(milliseconds: 1200), // Slower, more intentional fade
       vsync: this,
     );
+
+    // Controls fade controller for smoother UI transitions
+    _controlsFadeController = AnimationController(
+      duration: const Duration(milliseconds: 600), // Smooth controls fade
+      vsync: this,
+    );
+
+    // Overlay fade controller for status messages
+    _overlayFadeController = AnimationController(
+      duration: const Duration(milliseconds: 400), // Quick overlay transitions
+      vsync: this,
+    );
+
     _fadeController.forward();
+    _controlsFadeController.forward();
   }
 
   void _enterImmersiveMode() {
@@ -97,10 +118,15 @@ Experience the future of teleprompter technology with VoiceScroll Autocue - wher
 
   void _startAutoHideTimer() {
     _autoHideTimer?.cancel();
-    _autoHideTimer = Timer(const Duration(seconds: 3), () {
+    _autoHideTimer = Timer(const Duration(seconds: 5), () {
+      // Longer delay for laptop/tablet
       if (mounted) {
-        setState(() {
-          _controlsVisible = false;
+        _controlsFadeController.reverse().then((_) {
+          if (mounted) {
+            setState(() {
+              _controlsVisible = false;
+            });
+          }
         });
       }
     });
@@ -116,20 +142,45 @@ Experience the future of teleprompter technology with VoiceScroll Autocue - wher
   }
 
   Future<void> _initializeSpeechRecognition() async {
-    bool available = await _speechToText.initialize(
-      onStatus: (status) {
-        setState(() {
-          _isListening = status == 'listening';
-        });
-      },
-      onError: (errorNotification) {
-        debugPrint('Speech recognition error: ${errorNotification.errorMsg}');
-      },
-    );
+    debugPrint('Initializing speech recognition...');
 
-    if (available) {
+    try {
+      bool available = await _speechToText.initialize(
+        onStatus: (status) {
+          debugPrint('Speech recognition status: $status');
+          setState(() {
+            _isListening = status == 'listening';
+          });
+        },
+        onError: (errorNotification) {
+          debugPrint('Speech recognition error: ${errorNotification.errorMsg}');
+          setState(() {
+            _speechError = errorNotification.errorMsg;
+            _speechEnabled = false;
+          });
+        },
+      );
+
+      debugPrint('Speech recognition available: $available');
+
+      if (available) {
+        setState(() {
+          _speechEnabled = true;
+          _speechError = null;
+        });
+        debugPrint('Speech recognition enabled successfully');
+      } else {
+        debugPrint('Speech recognition not available on this device');
+        setState(() {
+          _speechEnabled = false;
+          _speechError = 'Speech recognition not available on this device';
+        });
+      }
+    } catch (e) {
+      debugPrint('Error initializing speech recognition: $e');
       setState(() {
-        _speechEnabled = true;
+        _speechEnabled = false;
+        _speechError = 'Failed to initialize speech recognition: $e';
       });
     }
   }
@@ -137,20 +188,48 @@ Experience the future of teleprompter technology with VoiceScroll Autocue - wher
   Future<void> _startListening() async {
     if (!_speechEnabled) {
       await _initializeSpeechRecognition();
-      return;
+      if (!_speechEnabled) {
+        debugPrint('Speech recognition not available');
+        setState(() {
+          _speechError = 'Speech recognition not available on this device';
+        });
+        _overlayFadeController.forward();
+        return;
+      }
     }
 
-    if (await Permission.microphone.request().isGranted) {
-      await _speechToText.listen(
-        onResult: _onSpeechResult,
-        listenFor: const Duration(seconds: 30),
-        pauseFor: const Duration(seconds: 3),
-        partialResults: true,
-        localeId: 'en_US',
-        onSoundLevelChange: (level) {
-          // Optional: Handle sound level changes
-        },
-      );
+    try {
+      var permissionStatus = await Permission.microphone.request();
+      if (permissionStatus.isGranted) {
+        debugPrint('Starting speech recognition...');
+        setState(() {
+          _permissionDenied = false;
+          _speechError = null;
+        });
+        await _speechToText.listen(
+          onResult: _onSpeechResult,
+          listenFor: const Duration(minutes: 10), // Listen for longer
+          pauseFor: const Duration(seconds: 5), // Longer pause
+          partialResults: true,
+          localeId: 'en_US',
+          onSoundLevelChange: (level) {
+            // Optional: Handle sound level changes
+          },
+        );
+      } else {
+        debugPrint('Microphone permission denied: $permissionStatus');
+        setState(() {
+          _permissionDenied = true;
+          _speechError =
+              'Microphone permission denied. Please enable microphone access in Settings.';
+        });
+        _overlayFadeController.forward();
+      }
+    } catch (e) {
+      debugPrint('Error starting speech recognition: $e');
+      setState(() {
+        _speechError = 'Failed to start speech recognition: $e';
+      });
     }
   }
 
@@ -159,13 +238,26 @@ Experience the future of teleprompter technology with VoiceScroll Autocue - wher
   }
 
   void _onSpeechResult(result) {
+    debugPrint(
+        'Speech result: ${result.recognizedWords} (final: ${result.finalResult})');
+
     setState(() {
       _currentRecognizedText = result.recognizedWords.toLowerCase();
     });
 
     if (result.finalResult) {
+      debugPrint('Processing final result: $_currentRecognizedText');
       _processRecognizedText(_currentRecognizedText);
       _currentRecognizedText = '';
+
+      // Restart listening if still playing
+      if (_isPlaying && _voiceRecognitionActive) {
+        Future.delayed(const Duration(milliseconds: 500), () {
+          if (_isPlaying && _voiceRecognitionActive) {
+            _startListening();
+          }
+        });
+      }
     }
   }
 
@@ -209,25 +301,75 @@ Experience the future of teleprompter technology with VoiceScroll Autocue - wher
 
   int _findMatchingWords(List<String> recognizedWords) {
     int bestMatch = _currentWordIndex;
+    debugPrint('Looking for matches in: $recognizedWords');
+    debugPrint('Current word index: $_currentWordIndex');
+    debugPrint(
+        'Script words around current: ${_scriptWords.skip(_currentWordIndex).take(5).toList()}');
 
     // Look for matches starting from current position
-    for (int i = _currentWordIndex; i < _scriptWords.length; i++) {
+    for (int i = _currentWordIndex;
+        i < _scriptWords.length && i < _currentWordIndex + 10;
+        i++) {
       for (String recognizedWord in recognizedWords) {
-        if (_scriptWords[i].contains(recognizedWord) ||
-            recognizedWord.contains(_scriptWords[i])) {
-          bestMatch = i;
+        // More flexible matching
+        if (_wordsMatch(_scriptWords[i], recognizedWord)) {
+          debugPrint(
+              'Found match: "${_scriptWords[i]}" matches "$recognizedWord" at index $i');
+          bestMatch = i + 1; // Move to next word
           break;
         }
       }
+      if (bestMatch > _currentWordIndex) break;
     }
 
+    debugPrint('Best match found at index: $bestMatch');
     return bestMatch;
+  }
+
+  bool _wordsMatch(String scriptWord, String recognizedWord) {
+    // Exact match
+    if (scriptWord == recognizedWord) return true;
+
+    // Contains match (either direction)
+    if (scriptWord.contains(recognizedWord) ||
+        recognizedWord.contains(scriptWord)) return true;
+
+    // Levenshtein distance for fuzzy matching
+    if (_levenshteinDistance(scriptWord, recognizedWord) <= 2) return true;
+
+    return false;
+  }
+
+  int _levenshteinDistance(String s1, String s2) {
+    if (s1.length < s2.length) return _levenshteinDistance(s2, s1);
+
+    if (s2.isEmpty) return s1.length;
+
+    List<int> previousRow = List.generate(s2.length + 1, (index) => index);
+
+    for (int i = 0; i < s1.length; i++) {
+      List<int> currentRow = [i + 1];
+
+      for (int j = 0; j < s2.length; j++) {
+        int insertCost = currentRow[j] + 1;
+        int deleteCost = previousRow[j + 1] + 1;
+        int substituteCost = previousRow[j] + (s1[i] == s2[j] ? 0 : 1);
+
+        currentRow.add([insertCost, deleteCost, substituteCost]
+            .reduce((a, b) => a < b ? a : b));
+      }
+
+      previousRow = currentRow;
+    }
+
+    return previousRow.last;
   }
 
   void _showControls() {
     setState(() {
       _controlsVisible = true;
     });
+    _controlsFadeController.forward();
     _startAutoHideTimer();
   }
 
@@ -301,10 +443,97 @@ Experience the future of teleprompter technology with VoiceScroll Autocue - wher
     Navigator.of(context).pop();
   }
 
+  Widget _buildSpeechStatusWidget() {
+    return Container(
+      padding: EdgeInsets.all(16.w),
+      margin: EdgeInsets.symmetric(horizontal: 4.w),
+      decoration: BoxDecoration(
+        color: _permissionDenied
+            ? Colors.orange.withOpacity(0.9)
+            : Colors.red.withOpacity(0.9),
+        borderRadius: BorderRadius.circular(12.0),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.2),
+            blurRadius: 8.0,
+            offset: Offset(0, 2.h),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              Icon(
+                _permissionDenied ? Icons.mic_off : Icons.error_outline,
+                color: Colors.white,
+                size: 20.sp,
+              ),
+              SizedBox(width: 8.w),
+              Expanded(
+                child: Text(
+                  _permissionDenied
+                      ? 'Microphone Permission Required'
+                      : 'Speech Recognition Error',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 16.sp,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+              GestureDetector(
+                onTap: () {
+                  setState(() {
+                    _speechError = null;
+                    _permissionDenied = false;
+                  });
+                },
+                child: Icon(
+                  Icons.close,
+                  color: Colors.white,
+                  size: 20.sp,
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: 8.h),
+          Text(
+            _speechError ??
+                'Please enable microphone access in Settings to use voice recognition.',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 14.sp,
+            ),
+          ),
+          if (_permissionDenied) ...[
+            SizedBox(height: 12.h),
+            ElevatedButton(
+              onPressed: () async {
+                await openAppSettings();
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.white,
+                foregroundColor: Colors.orange,
+              ),
+              child: Text(
+                'Open Settings',
+                style: TextStyle(fontSize: 14.sp),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   @override
   void dispose() {
     _scrollController.dispose();
     _fadeController.dispose();
+    _controlsFadeController.dispose();
+    _overlayFadeController.dispose();
     _autoHideTimer?.cancel();
     _scrollTimer?.cancel();
     _speechToText.stop();
@@ -320,14 +549,26 @@ Experience the future of teleprompter technology with VoiceScroll Autocue - wher
         child: Stack(
           children: [
             // Main Text Display
-            GestureDetector(
-              onScaleUpdate: _handleFontSizeChange,
-              child: TeleprompterTextWidget(
-                text: _scriptText,
-                currentWordIndex: _currentWordIndex,
-                fontSize: _fontSize,
-                scrollController: _scrollController,
-                onTap: _handleTextTap,
+            FadeTransition(
+              opacity: _fadeController,
+              child: SlideTransition(
+                position: Tween<Offset>(
+                  begin: const Offset(0, 0.1),
+                  end: Offset.zero,
+                ).animate(CurvedAnimation(
+                  parent: _fadeController,
+                  curve: Curves.easeOutQuart,
+                )),
+                child: GestureDetector(
+                  onScaleUpdate: _handleFontSizeChange,
+                  child: TeleprompterTextWidget(
+                    text: _scriptText,
+                    currentWordIndex: _currentWordIndex,
+                    fontSize: _fontSize,
+                    scrollController: _scrollController,
+                    onTap: _handleTextTap,
+                  ),
+                ),
               ),
             ),
 
@@ -336,9 +577,12 @@ Experience the future of teleprompter technology with VoiceScroll Autocue - wher
               top: 0,
               left: 0,
               right: 0,
-              child: TeleprompterProgressWidget(
-                progress: _progress,
-                isVisible: _controlsVisible,
+              child: FadeTransition(
+                opacity: _controlsFadeController,
+                child: TeleprompterProgressWidget(
+                  progress: _progress,
+                  isVisible: _controlsVisible,
+                ),
               ),
             ),
 
@@ -346,26 +590,62 @@ Experience the future of teleprompter technology with VoiceScroll Autocue - wher
             Positioned(
               top: 4.h,
               right: 4.w,
-              child: VoiceCommandIndicatorWidget(
-                isListening: _isListening,
-                lastCommand: _lastVoiceCommand,
-                isVisible: _controlsVisible || _isListening,
+              child: FadeTransition(
+                opacity: _overlayFadeController,
+                child: VoiceCommandIndicatorWidget(
+                  isListening: _isListening,
+                  lastCommand: _lastVoiceCommand,
+                  isVisible: _controlsVisible || _isListening,
+                ),
               ),
             ),
+
+            // Speech Recognition Status
+            if (_speechError != null || _permissionDenied)
+              Positioned(
+                top: 12.h,
+                left: 4.w,
+                right: 4.w,
+                child: FadeTransition(
+                  opacity: _overlayFadeController,
+                  child: SlideTransition(
+                    position: Tween<Offset>(
+                      begin: const Offset(0, -0.5),
+                      end: Offset.zero,
+                    ).animate(CurvedAnimation(
+                      parent: _overlayFadeController,
+                      curve: Curves.easeOutBack,
+                    )),
+                    child: _buildSpeechStatusWidget(),
+                  ),
+                ),
+              ),
 
             // Bottom Controls
             Positioned(
               bottom: 0,
               left: 0,
               right: 0,
-              child: TeleprompterControlsWidget(
-                isPlaying: _isPlaying,
-                scrollSpeed: _scrollSpeed,
-                onPlayPause: _togglePlayPause,
-                onSpeedDecrease: _decreaseSpeed,
-                onSpeedIncrease: _increaseSpeed,
-                onExit: _exitTeleprompter,
-                isVisible: _controlsVisible,
+              child: FadeTransition(
+                opacity: _controlsFadeController,
+                child: SlideTransition(
+                  position: Tween<Offset>(
+                    begin: const Offset(0, 1),
+                    end: Offset.zero,
+                  ).animate(CurvedAnimation(
+                    parent: _controlsFadeController,
+                    curve: Curves.easeOutCubic,
+                  )),
+                  child: TeleprompterControlsWidget(
+                    isPlaying: _isPlaying,
+                    scrollSpeed: _scrollSpeed,
+                    onPlayPause: _togglePlayPause,
+                    onSpeedDecrease: _decreaseSpeed,
+                    onSpeedIncrease: _increaseSpeed,
+                    onExit: _exitTeleprompter,
+                    isVisible: _controlsVisible,
+                  ),
+                ),
               ),
             ),
 
