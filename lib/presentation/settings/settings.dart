@@ -341,17 +341,6 @@ class _SettingsState extends State<Settings> with TickerProviderStateMixin {
     );
   }
 
-  void _resetVoiceCalibration() {
-    setState(() {
-      _voiceSensitivity = 0.7;
-      _selectedLanguage = 'English (US)';
-      _accentAdaptation = true;
-      _noiseFiltering = true;
-    });
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Voice calibration reset successfully')),
-    );
-  }
 
   void _resetAllSettings() {
     setState(() {
@@ -620,12 +609,6 @@ class _SettingsState extends State<Settings> with TickerProviderStateMixin {
         const VoiceTestWidget(),
         SizedBox(height: 2.h),
         SettingsItemWidget(
-          title: 'Voice Calibration',
-          subtitle: 'Recalibrate voice recognition',
-          iconName: 'tune',
-          onTap: () => Navigator.pushNamed(context, '/voice-calibration'),
-        ),
-        SettingsItemWidget(
           title: 'Privacy Settings',
           subtitle: 'Manage data and privacy',
           iconName: 'privacy_tip',
@@ -650,17 +633,6 @@ class _SettingsState extends State<Settings> with TickerProviderStateMixin {
     return SettingsSectionWidget(
       title: 'RESET OPTIONS',
       children: [
-        SettingsItemWidget(
-          title: 'Reset Voice Calibration',
-          subtitle: 'Reset voice recognition settings',
-          iconName: 'refresh',
-          iconColor: AppTheme.warning,
-          onTap: () => _showResetDialog(
-            'Reset Voice Calibration',
-            'This will reset all voice recognition settings to their default values.',
-            _resetVoiceCalibration,
-          ),
-        ),
         SettingsItemWidget(
           title: 'Reset All Settings',
           subtitle: 'Reset all app settings to defaults',
