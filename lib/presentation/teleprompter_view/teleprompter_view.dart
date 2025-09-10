@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -14,7 +15,7 @@ import './widgets/teleprompter_text_widget.dart';
 import './widgets/voice_command_indicator_widget.dart';
 
 class TeleprompterView extends StatefulWidget {
-  const TeleprompterView({Key? key}) : super(key: key);
+  const TeleprompterView({super.key});
 
   @override
   State<TeleprompterView> createState() => _TeleprompterViewState();
@@ -51,6 +52,12 @@ class _TeleprompterViewState extends State<TeleprompterView>
   bool _voiceRecognitionActive = false;
   List<String> _scriptWords = [];
   int _lastMatchedWordIndex = -1;
+  final Map<String, List<int>> _wordPositionsCache = {};
+  Timer? _speechTimeoutTimer;
+  DateTime? _lastSpeechTime;
+  bool _continuousListening = false;
+  int _speechRestartAttempts = 0;
+  static const int _maxRestartAttempts = 3;
 
   // Mock Script Data
   final String _scriptText =
@@ -139,6 +146,67 @@ Experience the future of teleprompter technology with VoiceScroll Autocue - wher
         .split(RegExp(r'\s+'))
         .where((word) => word.isNotEmpty)
         .toList();
+    
+    _buildWordPositionsCache();
+  }
+  
+  void _buildWordPositionsCache() {
+    _wordPositionsCache.clear();
+    for (int i = 0; i < _scriptWords.length; i++) {
+      final word = _scriptWords[i];
+      if (!_wordPositionsCache.containsKey(word)) {
+        _wordPositionsCache[word] = [];
+      }
+      _wordPositionsCache[word]!.add(i);
+    }
+    debugPrint('Built word positions cache for ${_wordPositionsCache.length} unique words');
+  }
+  
+  void _startSpeechTimeoutMonitor() {
+    _speechTimeoutTimer?.cancel();
+    _speechTimeoutTimer = Timer.periodic(const Duration(seconds: 2), (timer) {
+      if (!_continuousListening || !_voiceRecognitionActive) {
+        timer.cancel();
+        return;
+      }
+      
+      final now = DateTime.now();
+      if (_lastSpeechTime != null && 
+          now.difference(_lastSpeechTime!).inSeconds > 10) {
+        // No speech activity for 10 seconds, check if still listening
+        debugPrint('No speech activity detected, checking listening status');
+        if (!_speechToText.isListening && _speechRestartAttempts < _maxRestartAttempts) {
+          debugPrint('Attempting to restart speech recognition due to timeout');
+          _speechRestartAttempts++;
+          _restartSpeechRecognition();
+        }
+      }
+    });
+  }
+  
+  void _resetSpeechTimeoutTimer() {
+    _startSpeechTimeoutMonitor();
+  }
+  
+  Future<void> _restartSpeechRecognition() async {
+    if (!_isPlaying || !_voiceRecognitionActive) return;
+    
+    debugPrint('Restarting speech recognition (attempt $_speechRestartAttempts/$_maxRestartAttempts)');
+    
+    try {
+      await _speechToText.stop();
+      await Future.delayed(const Duration(milliseconds: 200)); // Short delay
+      await _startListening();
+    } catch (e) {
+      debugPrint('Error restarting speech recognition: $e');
+      if (_speechRestartAttempts >= _maxRestartAttempts) {
+        debugPrint('Max restart attempts reached, disabling voice recognition');
+        setState(() {
+          _speechError = 'Voice recognition failed. Please restart manually.';
+          _voiceRecognitionActive = false;
+        });
+      }
+    }
   }
 
   Future<void> _initializeSpeechRecognition() async {
@@ -208,14 +276,20 @@ Experience the future of teleprompter technology with VoiceScroll Autocue - wher
         });
         await _speechToText.listen(
           onResult: _onSpeechResult,
-          listenFor: const Duration(minutes: 10), // Listen for longer
-          pauseFor: const Duration(seconds: 5), // Longer pause
-          partialResults: true,
+          listenFor: const Duration(minutes: 30), // Much longer session
+          pauseFor: const Duration(seconds: 3), // Shorter pause for responsiveness
+          partialResults: true, // Using deprecated parameter until SpeechListenOptions available
           localeId: 'en_US',
           onSoundLevelChange: (level) {
             // Optional: Handle sound level changes
           },
         );
+        
+        setState(() {
+          _continuousListening = true;
+        });
+        
+        _startSpeechTimeoutMonitor();
       } else {
         debugPrint('Microphone permission denied: $permissionStatus');
         setState(() {
@@ -234,6 +308,10 @@ Experience the future of teleprompter technology with VoiceScroll Autocue - wher
   }
 
   Future<void> _stopListening() async {
+    debugPrint('Stopping speech recognition');
+    _speechTimeoutTimer?.cancel();
+    _continuousListening = false;
+    _speechRestartAttempts = 0;
     await _speechToText.stop();
   }
 
@@ -241,23 +319,29 @@ Experience the future of teleprompter technology with VoiceScroll Autocue - wher
     debugPrint(
         'Speech result: ${result.recognizedWords} (final: ${result.finalResult})');
 
-    setState(() {
-      _currentRecognizedText = result.recognizedWords.toLowerCase();
-    });
+    _lastSpeechTime = DateTime.now();
+    _resetSpeechTimeoutTimer();
 
+    // Only update UI with current text, don't process partials for word matching
+    if (mounted) {
+      setState(() {
+        _currentRecognizedText = result.recognizedWords.toLowerCase();
+      });
+    }
+
+    // Only process final results for word advancement
     if (result.finalResult) {
       debugPrint('Processing final result: $_currentRecognizedText');
       _processRecognizedText(_currentRecognizedText);
-      _currentRecognizedText = '';
-
-      // Restart listening if still playing
-      if (_isPlaying && _voiceRecognitionActive) {
-        Future.delayed(const Duration(milliseconds: 500), () {
-          if (_isPlaying && _voiceRecognitionActive) {
-            _startListening();
-          }
+      
+      if (mounted) {
+        setState(() {
+          _currentRecognizedText = '';
         });
       }
+      
+      // No automatic restart - let continuous session handle it
+      _speechRestartAttempts = 0; // Reset restart attempts on successful recognition
     }
   }
 
@@ -300,70 +384,92 @@ Experience the future of teleprompter technology with VoiceScroll Autocue - wher
   }
 
   int _findMatchingWords(List<String> recognizedWords) {
+    if (recognizedWords.isEmpty) return _currentWordIndex;
+    
     int bestMatch = _currentWordIndex;
     debugPrint('Looking for matches in: $recognizedWords');
     debugPrint('Current word index: $_currentWordIndex');
     debugPrint(
         'Script words around current: ${_scriptWords.skip(_currentWordIndex).take(5).toList()}');
 
-    // Look for matches starting from current position
-    for (int i = _currentWordIndex;
-        i < _scriptWords.length && i < _currentWordIndex + 10;
-        i++) {
-      for (String recognizedWord in recognizedWords) {
-        // More flexible matching
-        if (_wordsMatch(_scriptWords[i], recognizedWord)) {
-          debugPrint(
-              'Found match: "${_scriptWords[i]}" matches "$recognizedWord" at index $i');
-          bestMatch = i + 1; // Move to next word
-          break;
+    // Define search window to limit scope and improve performance
+    final searchStart = _currentWordIndex;
+    final searchEnd = math.min(_scriptWords.length, _currentWordIndex + 15);
+    
+    // Find the furthest matching word within the search window
+    int furthestMatch = _currentWordIndex;
+    
+    for (String recognizedWord in recognizedWords) {
+      // First try exact match using cache
+      final positions = _wordPositionsCache[recognizedWord];
+      if (positions != null) {
+        for (int position in positions) {
+          if (position >= searchStart && position < searchEnd && position > furthestMatch) {
+            debugPrint('Found exact match: "$recognizedWord" at index $position');
+            furthestMatch = position;
+          }
         }
       }
-      if (bestMatch > _currentWordIndex) break;
+      
+      // If no exact match, try fuzzy matching only within a smaller window
+      if (furthestMatch == _currentWordIndex) {
+        for (int i = searchStart; i < math.min(searchEnd, searchStart + 8); i++) {
+          if (_wordsMatchFuzzy(_scriptWords[i], recognizedWord)) {
+            debugPrint('Found fuzzy match: "${_scriptWords[i]}" matches "$recognizedWord" at index $i');
+            if (i > furthestMatch) {
+              furthestMatch = i;
+            }
+            break; // Stop at first fuzzy match to avoid over-processing
+          }
+        }
+      }
+    }
+    
+    if (furthestMatch > _currentWordIndex) {
+      bestMatch = furthestMatch + 1; // Move to next word
     }
 
     debugPrint('Best match found at index: $bestMatch');
     return bestMatch;
   }
 
-  bool _wordsMatch(String scriptWord, String recognizedWord) {
+  bool _wordsMatchFuzzy(String scriptWord, String recognizedWord) {
     // Exact match
     if (scriptWord == recognizedWord) return true;
 
+    // Ignore very short words to avoid false positives
+    if (recognizedWord.length < 3) return false;
+    
     // Contains match (either direction)
     if (scriptWord.contains(recognizedWord) ||
-        recognizedWord.contains(scriptWord)) return true;
-
-    // Levenshtein distance for fuzzy matching
-    if (_levenshteinDistance(scriptWord, recognizedWord) <= 2) return true;
-
-    return false;
-  }
-
-  int _levenshteinDistance(String s1, String s2) {
-    if (s1.length < s2.length) return _levenshteinDistance(s2, s1);
-
-    if (s2.isEmpty) return s1.length;
-
-    List<int> previousRow = List.generate(s2.length + 1, (index) => index);
-
-    for (int i = 0; i < s1.length; i++) {
-      List<int> currentRow = [i + 1];
-
-      for (int j = 0; j < s2.length; j++) {
-        int insertCost = currentRow[j] + 1;
-        int deleteCost = previousRow[j + 1] + 1;
-        int substituteCost = previousRow[j] + (s1[i] == s2[j] ? 0 : 1);
-
-        currentRow.add([insertCost, deleteCost, substituteCost]
-            .reduce((a, b) => a < b ? a : b));
-      }
-
-      previousRow = currentRow;
+        recognizedWord.contains(scriptWord)) {
+      return true;
     }
 
-    return previousRow.last;
+    // Simple fuzzy matching: allow 1-2 character differences for longer words
+    if (recognizedWord.length > 4 && scriptWord.length > 4) {
+      return _simpleDistance(scriptWord, recognizedWord) <= 2;
+    }
+    
+    return false;
   }
+  
+  int _simpleDistance(String s1, String s2) {
+    // Simple character difference count (much faster than Levenshtein)
+    if ((s1.length - s2.length).abs() > 2) return 999; // Too different
+    
+    int differences = 0;
+    int minLength = math.min(s1.length, s2.length);
+    
+    for (int i = 0; i < minLength; i++) {
+      if (s1[i] != s2[i]) differences++;
+      if (differences > 2) return differences; // Early exit
+    }
+    
+    differences += (s1.length - s2.length).abs();
+    return differences;
+  }
+
 
   void _showControls() {
     setState(() {
@@ -449,12 +555,12 @@ Experience the future of teleprompter technology with VoiceScroll Autocue - wher
       margin: EdgeInsets.symmetric(horizontal: 4.w),
       decoration: BoxDecoration(
         color: _permissionDenied
-            ? Colors.orange.withOpacity(0.9)
-            : Colors.red.withOpacity(0.9),
+            ? Colors.orange.withValues(alpha: 0.9)
+            : Colors.red.withValues(alpha: 0.9),
         borderRadius: BorderRadius.circular(12.0),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.2),
+            color: Colors.black.withValues(alpha: 0.2),
             blurRadius: 8.0,
             offset: Offset(0, 2.h),
           ),
@@ -536,6 +642,7 @@ Experience the future of teleprompter technology with VoiceScroll Autocue - wher
     _overlayFadeController.dispose();
     _autoHideTimer?.cancel();
     _scrollTimer?.cancel();
+    _speechTimeoutTimer?.cancel();
     _speechToText.stop();
     _exitImmersiveMode();
     super.dispose();
