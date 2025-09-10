@@ -9,15 +9,21 @@ class AppTheme {
 
   // High-Contrast Professional Color Palette
   // Deep, readable colors optimized for various lighting conditions
-  static const Color primary = Color(0xFF1A1A1A); // Deep charcoal for maximum text contrast
-  static const Color secondary = Color(0xFF2D2D30); // Subtle interface backgrounds
-  static const Color accent = Color(0xFF007AFF); // iOS-inspired blue for interactive elements
+  static const Color primary =
+      Color(0xFF1A1A1A); // Deep charcoal for maximum text contrast
+  static const Color secondary =
+      Color(0xFF2D2D30); // Subtle interface backgrounds
+  static const Color accent =
+      Color(0xFF007AFF); // iOS-inspired blue for interactive elements
   static const Color success = Color(0xFF34C759); // Clear positive feedback
   static const Color warning = Color(0xFFFF9500); // Attention-grabbing alerts
   static const Color error = Color(0xFFFF3B30); // Critical system alerts
-  static const Color textPrimary = Color(0xFFFFFFFF); // Pure white for maximum readability
-  static const Color textSecondary = Color(0xFF8E8E93); // Muted text for supporting information
-  static const Color surface = Color(0xFF000000); // True black for full-screen reading mode
+  static const Color textPrimary =
+      Color(0xFFFFFFFF); // Pure white for maximum readability
+  static const Color textSecondary =
+      Color(0xFF8E8E93); // Muted text for supporting information
+  static const Color surface =
+      Color(0xFF000000); // True black for full-screen reading mode
   static const Color border = Color(0xFF48484A); // Minimal separation lines
 
   // Light theme variations (for settings and non-reading interfaces)
@@ -28,7 +34,8 @@ class AppTheme {
   static const Color textSecondaryLight = Color(0xFF8E8E93);
 
   // Shadow and divider colors with minimal opacity
-  static const Color shadowDark = Color(0x1A000000); // 2-4dp shadows with 0.1 opacity
+  static const Color shadowDark =
+      Color(0x1A000000); // 2-4dp shadows with 0.1 opacity
   static const Color shadowLight = Color(0x0A000000);
   static const Color dividerDark = Color(0x1A48484A);
   static const Color dividerLight = Color(0x1A8E8E93);
@@ -67,7 +74,7 @@ class AppTheme {
     scaffoldBackgroundColor: surface,
     cardColor: secondary,
     dividerColor: border,
-    
+
     // AppBar theme for professional, distraction-free interface
     appBarTheme: AppBarTheme(
       backgroundColor: surface,
@@ -91,7 +98,7 @@ class AppTheme {
     ),
 
     // Card theme with subtle elevation
-    cardTheme: CardTheme(
+    cardTheme: CardThemeData(
       color: secondary,
       elevation: 2.0, // Minimal 2dp shadow
       shadowColor: shadowDark,
@@ -226,7 +233,8 @@ class AppTheme {
         return textSecondary;
       }),
       trackColor: WidgetStateProperty.resolveWith((states) {
-        if (states.contains(WidgetState.selected)) return accent.withValues(alpha: 0.3);
+        if (states.contains(WidgetState.selected))
+          return accent.withValues(alpha: 0.3);
         return border;
       }),
     ),
@@ -265,7 +273,7 @@ class AppTheme {
     ),
 
     // Tab bar theme for document sections
-    tabBarTheme: TabBarTheme(
+    tabBarTheme: TabBarThemeData(
       labelColor: accent,
       unselectedLabelColor: textSecondary,
       indicatorColor: accent,
@@ -313,7 +321,7 @@ class AppTheme {
     ),
 
     // Dialog theme for modal interactions
-    dialogTheme: DialogTheme(
+    dialogTheme: DialogThemeData(
       backgroundColor: secondary,
       elevation: 8.0,
       shape: RoundedRectangleBorder(
@@ -368,7 +376,6 @@ class AppTheme {
     scaffoldBackgroundColor: surfaceLight,
     cardColor: surfaceLight,
     dividerColor: dividerLight,
-    
     appBarTheme: AppBarTheme(
       backgroundColor: surfaceLight,
       foregroundColor: textPrimaryLight,
@@ -385,8 +392,7 @@ class AppTheme {
         size: 24,
       ),
     ),
-
-    cardTheme: CardTheme(
+    cardTheme: CardThemeData(
       color: surfaceLight,
       elevation: 2.0,
       shadowColor: shadowLight,
@@ -394,7 +400,6 @@ class AppTheme {
         borderRadius: BorderRadius.circular(8.0),
       ),
     ),
-
     bottomNavigationBarTheme: BottomNavigationBarThemeData(
       backgroundColor: surfaceLight,
       selectedItemColor: accent,
@@ -402,9 +407,7 @@ class AppTheme {
       type: BottomNavigationBarType.fixed,
       elevation: 4.0,
     ),
-
     textTheme: _buildLightTextTheme(),
-
     inputDecorationTheme: InputDecorationTheme(
       fillColor: secondaryLight,
       filled: true,

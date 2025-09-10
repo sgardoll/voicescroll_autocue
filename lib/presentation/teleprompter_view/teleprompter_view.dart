@@ -1,9 +1,10 @@
 import 'dart:async';
-import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:sizer/sizer.dart';
+import 'package:speech_to_text/speech_to_text.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import '../../core/app_export.dart';
 import '../../theme/app_theme.dart';
@@ -26,7 +27,11 @@ class _TeleprompterViewState extends State<TeleprompterView>
   late AnimationController _fadeController;
   Timer? _autoHideTimer;
   Timer? _scrollTimer;
-  Timer? _voiceRecognitionTimer;
+
+  // Speech Recognition
+  final SpeechToText _speechToText = SpeechToText();
+  bool _speechEnabled = false;
+  String _currentRecognizedText = '';
 
   // Teleprompter State
   bool _isPlaying = false;
@@ -40,7 +45,8 @@ class _TeleprompterViewState extends State<TeleprompterView>
 
   // Voice Recognition State
   bool _voiceRecognitionActive = false;
-  List<String> _recognizedWords = [];
+  List<String> _scriptWords = [];
+  int _lastMatchedWordIndex = -1;
 
   // Mock Script Data
   final String _scriptText =
@@ -60,7 +66,8 @@ Experience the future of teleprompter technology with VoiceScroll Autocue - wher
     _initializeControllers();
     _enterImmersiveMode();
     _startAutoHideTimer();
-    _simulateVoiceRecognition();
+    _initializeSpeechRecognition();
+    _initializeScriptWords();
   }
 
   void _initializeControllers() {
@@ -99,41 +106,97 @@ Experience the future of teleprompter technology with VoiceScroll Autocue - wher
     });
   }
 
-  void _showControls() {
-    setState(() {
-      _controlsVisible = true;
-    });
-    _startAutoHideTimer();
+  void _initializeScriptWords() {
+    _scriptWords = _scriptText
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^\w\s]'), '')
+        .split(RegExp(r'\s+'))
+        .where((word) => word.isNotEmpty)
+        .toList();
   }
 
-  void _simulateVoiceRecognition() {
-    _voiceRecognitionTimer = Timer.periodic(
-      const Duration(milliseconds: 1500),
-      (timer) {
-        if (_isPlaying && _voiceRecognitionActive) {
-          _processVoiceInput();
-        }
+  Future<void> _initializeSpeechRecognition() async {
+    bool available = await _speechToText.initialize(
+      onStatus: (status) {
+        setState(() {
+          _isListening = status == 'listening';
+        });
+      },
+      onError: (errorNotification) {
+        debugPrint('Speech recognition error: ${errorNotification.errorMsg}');
       },
     );
+
+    if (available) {
+      setState(() {
+        _speechEnabled = true;
+      });
+    }
   }
 
-  void _processVoiceInput() {
-    final words = _scriptText.split(' ');
-    if (_currentWordIndex < words.length - 1) {
-      setState(() {
-        _currentWordIndex++;
-        _progress = _currentWordIndex / words.length;
-        _isListening = true;
-      });
+  Future<void> _startListening() async {
+    if (!_speechEnabled) {
+      await _initializeSpeechRecognition();
+      return;
+    }
 
-      // Simulate voice command recognition
-      if (Random().nextDouble() < 0.1) {
-        _processVoiceCommand();
-      }
+    if (await Permission.microphone.request().isGranted) {
+      await _speechToText.listen(
+        onResult: _onSpeechResult,
+        listenFor: const Duration(seconds: 30),
+        pauseFor: const Duration(seconds: 3),
+        partialResults: true,
+        localeId: 'en_US',
+        onSoundLevelChange: (level) {
+          // Optional: Handle sound level changes
+        },
+      );
+    }
+  }
+
+  Future<void> _stopListening() async {
+    await _speechToText.stop();
+  }
+
+  void _onSpeechResult(result) {
+    setState(() {
+      _currentRecognizedText = result.recognizedWords.toLowerCase();
+    });
+
+    if (result.finalResult) {
+      _processRecognizedText(_currentRecognizedText);
+      _currentRecognizedText = '';
+    }
+  }
+
+  void _processRecognizedText(String recognizedText) {
+    if (!_isPlaying || !_voiceRecognitionActive) return;
+
+    final recognizedWords = recognizedText
+        .replaceAll(RegExp(r'[^\w\s]'), '')
+        .split(RegExp(r'\s+'))
+        .where((word) => word.isNotEmpty)
+        .toList();
+
+    if (recognizedWords.isEmpty) return;
+
+    // Find matching words in the script
+    int newWordIndex = _findMatchingWords(recognizedWords);
+
+    if (newWordIndex > _lastMatchedWordIndex) {
+      setState(() {
+        _currentWordIndex = newWordIndex;
+        _progress = _currentWordIndex / _scriptWords.length;
+        _lastMatchedWordIndex = newWordIndex;
+      });
 
       _autoScrollToCurrentWord();
 
-      // Reset listening indicator
+      // Show listening indicator briefly
+      setState(() {
+        _isListening = true;
+      });
+
       Timer(const Duration(milliseconds: 500), () {
         if (mounted) {
           setState(() {
@@ -144,37 +207,28 @@ Experience the future of teleprompter technology with VoiceScroll Autocue - wher
     }
   }
 
-  void _processVoiceCommand() {
-    final commands = ['pause teleprompter', 'faster', 'slower', 'resume'];
-    final command = commands[Random().nextInt(commands.length)];
+  int _findMatchingWords(List<String> recognizedWords) {
+    int bestMatch = _currentWordIndex;
 
-    setState(() {
-      _lastVoiceCommand = command;
-    });
-
-    switch (command) {
-      case 'pause teleprompter':
-        _togglePlayPause();
-        break;
-      case 'faster':
-        _increaseSpeed();
-        break;
-      case 'slower':
-        _decreaseSpeed();
-        break;
-      case 'resume':
-        if (!_isPlaying) _togglePlayPause();
-        break;
+    // Look for matches starting from current position
+    for (int i = _currentWordIndex; i < _scriptWords.length; i++) {
+      for (String recognizedWord in recognizedWords) {
+        if (_scriptWords[i].contains(recognizedWord) ||
+            recognizedWord.contains(_scriptWords[i])) {
+          bestMatch = i;
+          break;
+        }
+      }
     }
 
-    // Clear command after 2 seconds
-    Timer(const Duration(seconds: 2), () {
-      if (mounted) {
-        setState(() {
-          _lastVoiceCommand = null;
-        });
-      }
+    return bestMatch;
+  }
+
+  void _showControls() {
+    setState(() {
+      _controlsVisible = true;
     });
+    _startAutoHideTimer();
   }
 
   void _autoScrollToCurrentWord() {
@@ -200,11 +254,18 @@ Experience the future of teleprompter technology with VoiceScroll Autocue - wher
     return (availableWidth / (averageCharWidth * averageWordLength)).floor();
   }
 
-  void _togglePlayPause() {
+  void _togglePlayPause() async {
     setState(() {
       _isPlaying = !_isPlaying;
       _voiceRecognitionActive = _isPlaying;
     });
+
+    if (_isPlaying) {
+      await _startListening();
+    } else {
+      await _stopListening();
+    }
+
     _showControls();
   }
 
@@ -246,7 +307,7 @@ Experience the future of teleprompter technology with VoiceScroll Autocue - wher
     _fadeController.dispose();
     _autoHideTimer?.cancel();
     _scrollTimer?.cancel();
-    _voiceRecognitionTimer?.cancel();
+    _speechToText.stop();
     _exitImmersiveMode();
     super.dispose();
   }
@@ -282,10 +343,14 @@ Experience the future of teleprompter technology with VoiceScroll Autocue - wher
             ),
 
             // Voice Command Indicator
-            VoiceCommandIndicatorWidget(
-              isListening: _isListening,
-              lastCommand: _lastVoiceCommand,
-              isVisible: _controlsVisible || _isListening,
+            Positioned(
+              top: 4.h,
+              right: 4.w,
+              child: VoiceCommandIndicatorWidget(
+                isListening: _isListening,
+                lastCommand: _lastVoiceCommand,
+                isVisible: _controlsVisible || _isListening,
+              ),
             ),
 
             // Bottom Controls

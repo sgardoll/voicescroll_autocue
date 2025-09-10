@@ -1,0 +1,20 @@
+{
+    "android": {
+        "androidManifest": {
+            "permissionSection": {
+                "Microphone": "<uses-permission android:name=\"android.permission.RECORD_AUDIO\"/>"
+            }
+        },
+        "appBuildGradle": {},
+        "settingsGradle": {}
+    },
+    "iOS": {
+        "infoPlist": {
+            "inDictSection": {
+                "NSMicrophoneUsageDescription": "<key>NSMicrophoneUsageDescription</key>\n    <string>Microphone permission is required to record audio.</string>"
+            }
+        },
+        "podFile": {},
+        "appDelegateSwift": {}
+    }
+}

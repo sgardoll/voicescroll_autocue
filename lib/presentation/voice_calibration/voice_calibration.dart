@@ -1,5 +1,3 @@
-import 'dart:io' if (dart.library.io) 'dart:io';
-
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
@@ -118,7 +116,7 @@ class _VoiceCalibrationState extends State<VoiceCalibration>
           // Web implementation - no path required, browser handles storage
           await _audioRecorder.start(
             const RecordConfig(encoder: AudioEncoder.wav),
-            path: null, // Add required path parameter with null for web
+            path: '', // Empty string for web
           );
         } else {
           // Mobile implementation - specify file path
@@ -166,9 +164,8 @@ class _VoiceCalibrationState extends State<VoiceCalibration>
     Future.delayed(const Duration(milliseconds: 100), () {
       if (_isListening && !_isPaused) {
         setState(() {
-          _audioLevel =
-              (0.3 +
-                  (DateTime.now().millisecondsSinceEpoch % 1000) / 1000 * 0.7);
+          _audioLevel = (0.3 +
+              (DateTime.now().millisecondsSinceEpoch % 1000) / 1000 * 0.7);
           _recognitionConfidence =
               0.6 + (DateTime.now().millisecondsSinceEpoch % 500) / 500 * 0.4;
         });
@@ -247,174 +244,171 @@ class _VoiceCalibrationState extends State<VoiceCalibration>
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder:
-          (context) => AlertDialog(
-            backgroundColor: AppTheme.secondary,
-            title: Row(
-              children: [
-                CustomIconWidget(
-                  iconName: 'check_circle',
-                  color: AppTheme.success,
-                  size: 6.w,
-                ),
-                SizedBox(width: 3.w),
-                Text(
-                  'Calibration Complete',
-                  style: AppTheme.darkTheme.textTheme.titleLarge?.copyWith(
-                    color: AppTheme.textPrimary,
-                  ),
-                ),
-              ],
+      builder: (context) => AlertDialog(
+        backgroundColor: AppTheme.secondary,
+        title: Row(
+          children: [
+            CustomIconWidget(
+              iconName: 'check_circle',
+              color: AppTheme.success,
+              size: 6.w,
             ),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Your voice recognition has been successfully calibrated!',
-                  style: AppTheme.darkTheme.textTheme.bodyMedium?.copyWith(
-                    color: AppTheme.textPrimary,
-                  ),
-                ),
-                SizedBox(height: 2.h),
-                Container(
-                  padding: EdgeInsets.all(4.w),
-                  decoration: BoxDecoration(
-                    color: AppTheme.primary,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Column(
+            SizedBox(width: 3.w),
+            Text(
+              'Calibration Complete',
+              style: AppTheme.darkTheme.textTheme.titleLarge?.copyWith(
+                color: AppTheme.textPrimary,
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Your voice recognition has been successfully calibrated!',
+              style: AppTheme.darkTheme.textTheme.bodyMedium?.copyWith(
+                color: AppTheme.textPrimary,
+              ),
+            ),
+            SizedBox(height: 2.h),
+            Container(
+              padding: EdgeInsets.all(4.w),
+              decoration: BoxDecoration(
+                color: AppTheme.primary,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Column(
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            'Accuracy Score:',
-                            style: AppTheme.darkTheme.textTheme.bodyMedium
-                                ?.copyWith(color: AppTheme.textSecondary),
-                          ),
-                          Text(
-                            '$accuracy%',
-                            style: AppTheme.darkTheme.textTheme.titleMedium
-                                ?.copyWith(
-                                  color:
-                                      accuracy >= 80
-                                          ? AppTheme.success
-                                          : accuracy >= 60
-                                          ? AppTheme.warning
-                                          : AppTheme.error,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                          ),
-                        ],
+                      Text(
+                        'Accuracy Score:',
+                        style: AppTheme.darkTheme.textTheme.bodyMedium
+                            ?.copyWith(color: AppTheme.textSecondary),
                       ),
-                      SizedBox(height: 1.h),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            'Environment:',
-                            style: AppTheme.darkTheme.textTheme.bodyMedium
-                                ?.copyWith(color: AppTheme.textSecondary),
-                          ),
-                          Text(
-                            _detectedEnvironment.split(' ').first,
-                            style: AppTheme.darkTheme.textTheme.bodyMedium
-                                ?.copyWith(color: AppTheme.textPrimary),
-                          ),
-                        ],
+                      Text(
+                        '$accuracy%',
+                        style:
+                            AppTheme.darkTheme.textTheme.titleMedium?.copyWith(
+                          color: accuracy >= 80
+                              ? AppTheme.success
+                              : accuracy >= 60
+                                  ? AppTheme.warning
+                                  : AppTheme.error,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                     ],
                   ),
-                ),
-                SizedBox(height: 2.h),
-                Text(
-                  accuracy >= 80
-                      ? 'Excellent! Your teleprompter will work optimally.'
-                      : accuracy >= 60
+                  SizedBox(height: 1.h),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Environment:',
+                        style: AppTheme.darkTheme.textTheme.bodyMedium
+                            ?.copyWith(color: AppTheme.textSecondary),
+                      ),
+                      Text(
+                        _detectedEnvironment.split(' ').first,
+                        style: AppTheme.darkTheme.textTheme.bodyMedium
+                            ?.copyWith(color: AppTheme.textPrimary),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            SizedBox(height: 2.h),
+            Text(
+              accuracy >= 80
+                  ? 'Excellent! Your teleprompter will work optimally.'
+                  : accuracy >= 60
                       ? 'Good calibration. Consider recalibrating in a quieter environment for better results.'
                       : 'Consider recalibrating in a quieter environment or adjusting sensitivity settings.',
-                  style: AppTheme.darkTheme.textTheme.bodySmall?.copyWith(
-                    color: AppTheme.textSecondary,
-                  ),
-                ),
-              ],
-            ),
-            actions: [
-              if (accuracy < 80) ...[
-                TextButton(
-                  onPressed: () {
-                    Navigator.of(context).pop();
-                    _restartCalibration();
-                  },
-                  child: Text(
-                    'Recalibrate',
-                    style: TextStyle(color: AppTheme.accent),
-                  ),
-                ),
-              ],
-              ElevatedButton(
-                onPressed: () {
-                  Navigator.of(context).pop();
-                  Navigator.pushReplacementNamed(context, '/teleprompter-view');
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppTheme.accent,
-                ),
-                child: Text(
-                  'Continue to Teleprompter',
-                  style: TextStyle(color: AppTheme.textPrimary),
-                ),
+              style: AppTheme.darkTheme.textTheme.bodySmall?.copyWith(
+                color: AppTheme.textSecondary,
               ),
-            ],
+            ),
+          ],
+        ),
+        actions: [
+          if (accuracy < 80) ...[
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                _restartCalibration();
+              },
+              child: Text(
+                'Recalibrate',
+                style: TextStyle(color: AppTheme.accent),
+              ),
+            ),
+          ],
+          ElevatedButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              Navigator.pushReplacementNamed(context, '/teleprompter-view');
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.accent,
+            ),
+            child: Text(
+              'Continue to Teleprompter',
+              style: TextStyle(color: AppTheme.textPrimary),
+            ),
           ),
+        ],
+      ),
     );
   }
 
   void _showPermissionDialog() {
     showDialog(
       context: context,
-      builder:
-          (context) => AlertDialog(
-            backgroundColor: AppTheme.secondary,
-            title: Text(
-              'Microphone Permission Required',
-              style: AppTheme.darkTheme.textTheme.titleLarge?.copyWith(
-                color: AppTheme.textPrimary,
-              ),
-            ),
-            content: Text(
-              'Voice calibration requires microphone access to analyze your speech patterns and optimize recognition accuracy.',
-              style: AppTheme.darkTheme.textTheme.bodyMedium?.copyWith(
-                color: AppTheme.textPrimary,
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () {
-                  Navigator.of(context).pop();
-                  Navigator.pushReplacementNamed(context, '/settings');
-                },
-                child: Text(
-                  'Skip',
-                  style: TextStyle(color: AppTheme.textSecondary),
-                ),
-              ),
-              ElevatedButton(
-                onPressed: () {
-                  Navigator.of(context).pop();
-                  _requestMicrophonePermission();
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppTheme.accent,
-                ),
-                child: Text(
-                  'Grant Permission',
-                  style: TextStyle(color: AppTheme.textPrimary),
-                ),
-              ),
-            ],
+      builder: (context) => AlertDialog(
+        backgroundColor: AppTheme.secondary,
+        title: Text(
+          'Microphone Permission Required',
+          style: AppTheme.darkTheme.textTheme.titleLarge?.copyWith(
+            color: AppTheme.textPrimary,
           ),
+        ),
+        content: Text(
+          'Voice calibration requires microphone access to analyze your speech patterns and optimize recognition accuracy.',
+          style: AppTheme.darkTheme.textTheme.bodyMedium?.copyWith(
+            color: AppTheme.textPrimary,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              Navigator.pushReplacementNamed(context, '/settings');
+            },
+            child: Text(
+              'Skip',
+              style: TextStyle(color: AppTheme.textSecondary),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              _requestMicrophonePermission();
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.accent,
+            ),
+            child: Text(
+              'Grant Permission',
+              style: TextStyle(color: AppTheme.textPrimary),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -456,29 +450,28 @@ class _VoiceCalibrationState extends State<VoiceCalibration>
             onPressed: () {
               showDialog(
                 context: context,
-                builder:
-                    (context) => AlertDialog(
-                      backgroundColor: AppTheme.secondary,
-                      title: Text(
-                        'Voice Calibration Help',
-                        style: AppTheme.darkTheme.textTheme.titleMedium
-                            ?.copyWith(color: AppTheme.textPrimary),
+                builder: (context) => AlertDialog(
+                  backgroundColor: AppTheme.secondary,
+                  title: Text(
+                    'Voice Calibration Help',
+                    style: AppTheme.darkTheme.textTheme.titleMedium
+                        ?.copyWith(color: AppTheme.textPrimary),
+                  ),
+                  content: Text(
+                    'Voice calibration optimizes speech recognition for your voice and environment. Read each text passage clearly at your normal speaking pace. The system will learn your speech patterns and adjust sensitivity automatically.',
+                    style: AppTheme.darkTheme.textTheme.bodyMedium
+                        ?.copyWith(color: AppTheme.textPrimary),
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: Text(
+                        'Got it',
+                        style: TextStyle(color: AppTheme.accent),
                       ),
-                      content: Text(
-                        'Voice calibration optimizes speech recognition for your voice and environment. Read each text passage clearly at your normal speaking pace. The system will learn your speech patterns and adjust sensitivity automatically.',
-                        style: AppTheme.darkTheme.textTheme.bodyMedium
-                            ?.copyWith(color: AppTheme.textPrimary),
-                      ),
-                      actions: [
-                        TextButton(
-                          onPressed: () => Navigator.of(context).pop(),
-                          child: Text(
-                            'Got it',
-                            style: TextStyle(color: AppTheme.accent),
-                          ),
-                        ),
-                      ],
                     ),
+                  ],
+                ),
               );
             },
             icon: CustomIconWidget(
